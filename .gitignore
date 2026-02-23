@@ -1,0 +1,20 @@
+# Python cache/build
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# Virtual envs
+.venv/
+venv/
+env/
+
+# Local outputs
+data/raw/*.jsonl
+data/processed/*.jsonl
+data/labels/*.jsonl
+data/activations/*.npy
+
+# Local secrets/config
+.env

@@ -1,0 +1,3 @@
+# Core dependencies
+# The current pipeline (including Wikipedia fetcher) uses only Python standard library.
+# Keep this file as the canonical place for upcoming third-party packages.

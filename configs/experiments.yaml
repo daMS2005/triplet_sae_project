@@ -1,0 +1,8 @@
+ablation:
+  enabled: true
+  feature_ids: []
+steering:
+  enabled: true
+  feature_scale: 1.25
+evaluation:
+  metrics: ["precision", "recall", "f1", "structural_validity"]

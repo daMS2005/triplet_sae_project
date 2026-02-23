@@ -1,0 +1,8 @@
+language: en
+max_articles: 100
+source:
+  mode: search_query # one of: titles_file, category, search_query
+  titles_file: data/raw/titles.txt
+  category: Machine_learning
+  search_query: "knowledge graph"
+output_path: data/raw/wikipedia_articles.jsonl

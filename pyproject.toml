@@ -1,0 +1,12 @@
+[project]
+name = "triplet-sae-project"
+version = "0.1.0"
+description = "Triplet extraction with SAE feature analysis and interventions"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0.0", "ruff>=0.6.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
