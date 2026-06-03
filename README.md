@@ -5,6 +5,11 @@ This repository studies triplet extraction as both:
 - a `representation` problem, where we ask which sparse internal features are associated with structured extraction behavior, and
 - an `adaptation` problem, where we train a compact instruction-tuned model to emit factual triples directly from text.
 
+The main experimental comparison in the project is practical rather than purely descriptive:
+
+- `feature steering / intervention`: can sparse-feature edits produce usable triplet extraction behavior without retraining the base model?
+- `fine-tuning`: is supervised adaptation the more reliable path when the goal is a model that people can actually deploy and reuse?
+
 The project centers on factual `(subject, predicate, object)` extraction with optional qualifiers, for example:
 
 ```text
@@ -46,6 +51,9 @@ The repository is built around three methodological questions:
 
 3. `How far can a small open model be pushed with task-specific supervision?`
    The fine-tuning path trains and exports a Gemma 3 4B triplet extractor, then compares it against baseline behavior.
+
+4. `Which path is more practical: steering or fine-tuning?`
+   The repository is structured so that both intervention-based control and supervised adaptation can be tested on the same task, making it possible to compare them as engineering strategies rather than as unrelated experiments.
 
 ## Method Overview
 
@@ -106,6 +114,7 @@ The core logic is:
 This part of the project is meant to answer a methodological question, not just produce a demo:
 
 - if a feature is ranked highly in triplet-vs-control analysis, does editing it actually change the model’s behavior in the expected direction?
+- if steering works at all, does it work well enough to be a practical alternative to retraining?
 
 ### 4. Fine-tune and export a task-adapted model
 
@@ -123,6 +132,8 @@ This path treats triplet extraction as a standard supervised adaptation problem:
 - fine-tune Gemma 3 4B IT with LoRA
 - merge the adapter if needed
 - export quantized variants for deployment or comparison
+
+This path is the direct counterpart to steering: instead of editing internal sparse features at inference time, it asks whether a compact adapted model is the more robust and reusable solution.
 
 ## Repository Structure
 
@@ -161,6 +172,11 @@ This means the repository supports both:
 - `behavioral evaluation` of generated triples, and
 - `mechanistic evaluation` of whether internal sparse feature edits matter
 
+More importantly, it supports a comparison between two intervention styles on the same extraction problem:
+
+- `inference-time control` through SAE feature steering
+- `training-time adaptation` through LoRA fine-tuning
+
 ## Public Model Release
 
 The final public model release from this project is:
@@ -194,6 +210,83 @@ Notes:
 - [requirements.txt](/Users/danielmora/triplet_sae_project/requirements.txt) mirrors the lightweight data and labeling stack.
 - [requirements-finetune.txt](/Users/danielmora/triplet_sae_project/requirements-finetune.txt) mirrors the heavier Gemma / SAE / LoRA stack.
 - GPTQ export depends on `gptqmodel`, which is intentionally kept outside the default install path because it is more environment-sensitive.
+
+## Training Environments
+
+The repository was designed to run across three practical environments rather than a single locked-down stack.
+
+### 1. Local development
+
+Local development is intended for:
+
+- data collection and preprocessing
+- label generation orchestration
+- metric computation and result inspection
+- small smoke tests on scripts and configs
+
+This path assumes a normal Python environment and does not require a GPU.
+
+### 2. GPU VM training and export
+
+The fine-tuning and quantization path assumes a Linux GPU machine with:
+
+- Python `3.10+`
+- PyTorch with CUDA support
+- a recent NVIDIA GPU with enough memory for Gemma 3 4B LoRA runs
+- enough disk for checkpoints, merged models, and quantized exports
+
+In practice, the stable setup for the project was:
+
+- Ubuntu-based VM
+- single-GPU training
+- LoRA fine-tuning in `bfloat16`
+- optional `bitsandbytes` support for 4-bit loading when desired
+
+For the final Gemma 3 4B adaptation, the training path intentionally defaulted to standard LoRA rather than relying on QLoRA-specific tooling. That kept the continuation runs simpler and reduced environment-specific failure modes.
+
+### 3. Cluster / shared GPU environment
+
+The interpretability path can also run on a shared GPU node or research cluster, especially for:
+
+- large activation collection jobs
+- multi-layer SAE experiments
+- batch ablation / steering sweeps
+
+The repository no longer treats cluster launch wrappers as part of the public interface, but the core scripts are structured so they can still be scheduled non-interactively in a cluster environment.
+
+## Training Stack Assumptions
+
+The fine-tuning code in [scripts/12_finetune_gemma_lora.py](/Users/danielmora/triplet_sae_project/scripts/12_finetune_gemma_lora.py) assumes:
+
+- Hugging Face `transformers`
+- `peft` for LoRA adapters
+- `accelerate` for model loading and device placement
+- `torch` with `bfloat16` support on GPU
+
+The default training recipe is:
+
+- base model: `google/gemma-3-4b-it`
+- adapter method: LoRA
+- rank `r = 16`
+- alpha `= 32`
+- dropout `= 0.05`
+- gradient accumulation for effective larger batch size
+- checkpointed training with resume support
+
+This means the repository is optimized for continuation-style adaptation runs rather than fully from-scratch model training.
+
+## Infrastructure Notes
+
+The codebase separates `method` from `infrastructure`:
+
+- the public scripts define the data, activation, intervention, fine-tuning, and export logic
+- machine-specific launch wrappers, one-off cluster jobs, and release staging helpers are intentionally not part of the supported public workflow
+
+That separation is deliberate. The methodological core should remain portable across:
+
+- a laptop for lightweight development
+- a single-GPU cloud VM for training and export
+- a shared research cluster for large activation or intervention jobs
 
 ## Typical Workflows
 
