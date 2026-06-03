@@ -1,40 +1,35 @@
 #!/usr/bin/env python3
-"""
-Teacher-model triplet extraction step (GPT-5-mini).
+"""Extract (subject, predicate, object) triples from text chunks using a teacher LLM.
 
-- Input:  data/processed/wiki_chunks.jsonl  (one record per chunk)
-- Output: data/processed/wiki_triples.jsonl (one record per chunk, append-only)
+Uses async OpenAI calls with a concurrency semaphore for throughput.
 
 Resume behavior:
-- Loads chunk_id from OUTPUT_PATH and skips already-seen chunk_ids.
+- Reads already-processed chunk_ids from the output file and skips them.
+
 Durability:
-- Flush + fsync every 5 output records.
+- Writes are serialized through a lock; fsync every SAVE_EVERY_N records.
 """
 
 from __future__ import annotations
 
+import argparse
+import asyncio
 import json
 import os
 import time
 from pathlib import Path
 from typing import Any
+
 from dotenv import load_dotenv
 load_dotenv()
-from openai import OpenAI
+from openai import AsyncOpenAI
 
 
-# ---- Hardcoded config ----
 MODEL_NAME = "gpt-5-mini"
-INPUT_PATH = Path("data/processed/wiki_chunks.jsonl")
-OUTPUT_PATH = Path("data/processed/wiki_triples.jsonl")
-
-
-
-SAVE_EVERY_N = 5  # flush + fsync every N written records
-
-MAX_RETRIES = 1
+CONCURRENCY = 20    # simultaneous in-flight API calls
+SAVE_EVERY_N = 5
+MAX_RETRIES = 3
 INITIAL_BACKOFF_SECONDS = 1.0
-# --------------------------
 
 
 TRIPLES_SCHEMA: dict[str, Any] = {
@@ -121,10 +116,13 @@ def _load_pending_chunks(input_path: Path, done_chunk_ids: set[str]) -> list[dic
     return pending
 
 
-def _call_with_retries(client: OpenAI, *, title: str, chunk_text: str) -> dict[str, Any]:
-    backoff = INITIAL_BACKOFF_SECONDS
-    last_err: Exception | None = None
-
+async def _call_with_retries(
+    client: AsyncOpenAI,
+    sem: asyncio.Semaphore,
+    *,
+    title: str,
+    chunk_text: str,
+) -> dict[str, Any]:
     user_content = (
         f"Title: {title}\n\n"
         "Extract factual triples from the following text:\n"
@@ -132,105 +130,120 @@ def _call_with_retries(client: OpenAI, *, title: str, chunk_text: str) -> dict[s
         f"{chunk_text}\n"
         "-----"
     )
+    backoff = INITIAL_BACKOFF_SECONDS
+    last_err: Exception | None = None
 
     for attempt in range(1, MAX_RETRIES + 1):
         try:
-            resp = client.responses.create(
-                model=MODEL_NAME,
-                input=[
-                    {"role": "system", "content": SYSTEM_INSTRUCTIONS},
-                    {"role": "user", "content": user_content},
-                ],
-                text={"format": TRIPLES_SCHEMA},
-    
-            )
-
-            data = resp.output_text
-            print(resp)
-            print(resp.output)
-            print(resp.output_text)
-            print(resp.status)
-            print(resp.incomplete_details)
-            return json.loads(data)
-
+            async with sem:
+                resp = await client.responses.create(
+                    model=MODEL_NAME,
+                    input=[
+                        {"role": "system", "content": SYSTEM_INSTRUCTIONS},
+                        {"role": "user", "content": user_content},
+                    ],
+                    text={"format": TRIPLES_SCHEMA},
+                )
+            return json.loads(resp.output_text)
         except Exception as e:
             last_err = e
-            print(f"[Attempt {attempt}] Error: {repr(e)}")
+            print(f"  [attempt {attempt}/{MAX_RETRIES}] error: {repr(e)}")
             if attempt < MAX_RETRIES:
-                time.sleep(backoff)
+                await asyncio.sleep(backoff)
                 backoff *= 2
 
-    # Preserve original error message
-    raise RuntimeError(f"OpenAI call failed: {repr(last_err)}")
+    raise RuntimeError(f"OpenAI call failed after {MAX_RETRIES} attempts: {repr(last_err)}")
+
+
+async def _run(input_path: Path, output_path: Path, concurrency: int = CONCURRENCY) -> None:
+    done_chunk_ids = _load_done_chunk_ids(output_path)
+    pending = _load_pending_chunks(input_path, done_chunk_ids)
+    print(f"Already done: {len(done_chunk_ids)}  |  Pending: {len(pending)}")
+
+    if not pending:
+        return
+
+    client = AsyncOpenAI()
+    sem = asyncio.Semaphore(concurrency)
+
+    counters = {"written": 0, "failed": 0}
+    write_lock = asyncio.Lock()
+    out_f = output_path.open("a", encoding="utf-8")
+
+    async def process(rec: dict) -> None:
+        chunk_id = rec["chunk_id"]
+        title = str(rec.get("title") or "")
+        text = str(rec.get("text") or "")
+
+        try:
+            extracted = await _call_with_retries(client, sem, title=title, chunk_text=text)
+            out_record = {
+                "doc_id": rec.get("doc_id") or rec.get("article_id"),
+                "title": title,
+                "chunk_id": chunk_id,
+                "chunk_index": rec.get("chunk_index"),
+                "triples": extracted["triples"],
+                "model": MODEL_NAME,
+            }
+        except Exception as e:
+            out_record = {
+                "doc_id": rec.get("doc_id") or rec.get("article_id"),
+                "title": title,
+                "chunk_id": chunk_id,
+                "chunk_index": rec.get("chunk_index"),
+                "triples": [],
+                "error": str(e),
+                "model": MODEL_NAME,
+            }
+            async with write_lock:
+                counters["failed"] += 1
+
+        async with write_lock:
+            out_f.write(json.dumps(out_record, ensure_ascii=False) + "\n")
+            counters["written"] += 1
+            if counters["written"] % SAVE_EVERY_N == 0:
+                out_f.flush()
+                os.fsync(out_f.fileno())
+                print(f"  written={counters['written']} failed={counters['failed']}")
+
+    try:
+        await asyncio.gather(*[process(rec) for rec in pending])
+    finally:
+        out_f.flush()
+        os.fsync(out_f.fileno())
+        out_f.close()
+
+    print(
+        f"Done. written={counters['written']} failed={counters['failed']} -> {output_path}"
+    )
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Extract triplets from text chunks using an async teacher LLM."
+    )
+    parser.add_argument(
+        "--input", type=Path, required=True, metavar="FILE",
+        help="Input JSONL file of text chunks.",
+    )
+    parser.add_argument(
+        "--output", type=Path, required=True, metavar="FILE",
+        help="Output JSONL file for extracted triples (append-safe, resumable).",
+    )
+    parser.add_argument(
+        "--concurrency", type=int, default=CONCURRENCY, metavar="N",
+        help=f"Max simultaneous API calls (default: {CONCURRENCY}).",
+    )
+    args = parser.parse_args()
+
     if not os.environ.get("OPENAI_API_KEY"):
-        raise RuntimeError("OPENAI_API_KEY is not set in the environment.")
-    if not INPUT_PATH.exists():
-        raise FileNotFoundError(f"Input not found: {INPUT_PATH}")
+        raise RuntimeError("OPENAI_API_KEY is not set.")
+    if not args.input.exists():
+        raise FileNotFoundError(f"Input not found: {args.input}")
 
-    OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    args.output.parent.mkdir(parents=True, exist_ok=True)
 
-    done_chunk_ids = _load_done_chunk_ids(OUTPUT_PATH)
-    pending = _load_pending_chunks(INPUT_PATH, done_chunk_ids)
-
-    print(f"Already done chunks: {len(done_chunk_ids)}")
-    print(f"Pending chunks this run: {len(pending)}")
-
-    client = OpenAI()
-
-    processed = 0
-    written = 0
-    failed = 0
-
-    # Append-only output, resume-safe via done_chunk_ids
-    with OUTPUT_PATH.open("a", encoding="utf-8") as out_f:
-        for rec in pending:
-            chunk_id = rec["chunk_id"]
-            title = str(rec.get("title") or "")
-            text = str(rec.get("text") or "")
-
-            processed += 1
-            try:
-                extracted = _call_with_retries(client, title=title, chunk_text=text)
-                print(extracted)
-                out_record = {
-                    "article_id": rec.get("article_id"),
-                    "title": rec.get("title"),
-                    "chunk_id": chunk_id,
-                    "chunk_index": rec.get("chunk_index"),
-                    "triples": extracted["triples"],
-                    "model": MODEL_NAME,
-                }
-            except Exception as e:
-                failed += 1
-                out_record = {
-                    "article_id": rec.get("article_id"),
-                    "title": rec.get("title"),
-                    "chunk_id": chunk_id,
-                    "chunk_index": rec.get("chunk_index"),
-                    "error": str(e),
-                    "model": MODEL_NAME,
-                }
-
-            out_f.write(json.dumps(out_record, ensure_ascii=False) + "\n")
-            written += 1
-            done_chunk_ids.add(chunk_id)
-
-            # Durability: every N records, flush + fsync
-            if written % SAVE_EVERY_N == 0:
-                out_f.flush()
-                os.fsync(out_f.fileno())
-
-            if processed % 10 == 0:
-                print(f"processed={processed} written={written} failed={failed}")
-
-        # final flush
-        out_f.flush()
-        os.fsync(out_f.fileno())
-
-    print(f"Done. processed={processed} written={written} failed={failed} -> {OUTPUT_PATH}")
+    asyncio.run(_run(args.input, args.output, args.concurrency))
     return 0
 
 

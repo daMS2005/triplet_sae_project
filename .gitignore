@@ -4,17 +4,34 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 *.egg-info/
+build/
+dist/
 
 # Virtual envs
 .venv/
 venv/
 env/
 
-# Local outputs
+# OS/editor clutter
+.DS_Store
+
+# Generated files
+logs/
+vm_logs/
+outputs/
+data/finetune/
 data/raw/*.jsonl
 data/processed/*.jsonl
 data/labels/*.jsonl
 data/activations/*.npy
+data/predictions/*.jsonl
+
+# Local ops wrappers
+scripts/run_*.sbatch
+scripts/run_*_gcp.sh
+scripts/run_*_vm.sh
+scripts/run_*_vm.sbatch
+scripts/24_stop_gcp_when_run_finishes.sh
 
 # Local secrets/config
 .env

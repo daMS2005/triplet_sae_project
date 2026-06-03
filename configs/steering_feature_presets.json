@@ -1,0 +1,203 @@
+{
+  "sae_release": "gemma-scope-2-12b-it-res",
+  "sae_id_template": "layer_{layer}_width_16k_l0_medium",
+  "presets": {
+    "layer31_feature_7854": {
+      "kind": "ablation_supported_candidate",
+      "layer_feature_ids": {
+        "31": [
+          7854
+        ]
+      },
+      "recommended_edit": "steer",
+      "recommended_prompt_mode": "weak_triplet",
+      "notes": "Strongest single-feature ablation drop observed in the project."
+    },
+    "layer31_top4": {
+      "kind": "ablation_supported_candidate",
+      "layer_feature_ids": {
+        "31": [
+          7854,
+          512,
+          1622,
+          1955
+        ]
+      },
+      "recommended_edit": "steer",
+      "recommended_prompt_mode": "weak_triplet",
+      "notes": "Layer-31 top-4 ablation set used in VM experiments."
+    },
+    "layer24_best_pair": {
+      "kind": "ablation_supported_candidate",
+      "layer_feature_ids": {
+        "24": [
+          305,
+          80
+        ]
+      },
+      "recommended_edit": "steer",
+      "recommended_prompt_mode": "weak_triplet",
+      "notes": "Layer-24 pair with the strongest original single-layer ablation drop."
+    },
+    "layer24_original_top6": {
+      "kind": "ablation_supported_candidate",
+      "layer_feature_ids": {
+        "24": [
+          187,
+          210,
+          515,
+          305,
+          499,
+          80
+        ]
+      },
+      "recommended_edit": "steer",
+      "recommended_prompt_mode": "weak_triplet",
+      "notes": "Original layer-24 top feature family used in the first ablation/steering passes."
+    },
+    "crosslayer_top32_demo": {
+      "kind": "demo_set",
+      "layer_feature_ids": {
+        "12": [
+          235,
+          20,
+          458,
+          170,
+          329,
+          396,
+          7,
+          11161,
+          2555,
+          305,
+          117,
+          461,
+          103,
+          7026,
+          2748,
+          414,
+          1966,
+          8354,
+          1786,
+          11135,
+          12,
+          96,
+          4421,
+          4655,
+          811,
+          27,
+          351,
+          2059,
+          1438,
+          11402,
+          11625,
+          12996
+        ],
+        "24": [
+          209,
+          499,
+          305,
+          99,
+          579,
+          138,
+          163,
+          208,
+          516,
+          180,
+          48,
+          374,
+          478,
+          40,
+          2369,
+          205,
+          511,
+          497,
+          509,
+          109,
+          542,
+          3260,
+          2056,
+          536,
+          11,
+          5020,
+          5071,
+          44,
+          62,
+          5274,
+          345,
+          183
+        ],
+        "31": [
+          147,
+          281,
+          58,
+          156,
+          214,
+          297,
+          333,
+          287,
+          51,
+          72,
+          482,
+          91,
+          484,
+          292,
+          504,
+          426,
+          400,
+          509,
+          194,
+          105,
+          454,
+          182,
+          337,
+          78,
+          236,
+          402,
+          257,
+          135,
+          380,
+          334,
+          151,
+          228
+        ],
+        "41": [
+          348,
+          337,
+          532,
+          245,
+          451,
+          281,
+          507,
+          84,
+          25,
+          135,
+          214,
+          295,
+          133,
+          129,
+          72,
+          482,
+          83,
+          327,
+          99,
+          529,
+          156,
+          304,
+          469,
+          173,
+          108,
+          8,
+          252,
+          256,
+          388,
+          37,
+          123,
+          524
+        ]
+      },
+      "recommended_edit": "steer",
+      "recommended_prompt_mode": "summary",
+      "notes": "End-to-end demo set used for cross-layer steering. In our experiments it destabilized generation at 10x and 50x."
+    }
+  }
+}

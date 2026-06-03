@@ -1,5 +1,0 @@
-dictionary_size: 8192
-sparsity_coefficient: 1.0e-3
-learning_rate: 3.0e-4
-batch_size: 512
-epochs: 5

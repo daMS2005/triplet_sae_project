@@ -1,3 +1,7 @@
-# Core dependencies
-# The current pipeline (including Wikipedia fetcher) uses only Python standard library.
-# Keep this file as the canonical place for upcoming third-party packages.
+# Core data collection, labeling, and lightweight evaluation utilities.
+# This file intentionally stays small. Install the heavier Gemma/LoRA stack
+# from requirements-finetune.txt when you want local model work.
+openai==2.7.2
+python-dotenv==1.2.1
+tiktoken==0.9.0
+

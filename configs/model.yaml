@@ -1,5 +1,0 @@
-target_model: "meta-llama/Llama-3.1-8B"
-device: auto
-hook_points:
-  - "layers.10.mlp"
-  - "layers.15.mlp"
