@@ -112,7 +112,7 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
 
-    # Allow passing a UA via CLI; fetcher can read this env var if implemented
+    # The fetcher reads the CLI-provided User-Agent from this environment variable.
     if args.user_agent:
         os.environ["WIKIPEDIA_USER_AGENT"] = args.user_agent
 
